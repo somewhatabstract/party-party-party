@@ -1,20 +1,8 @@
 const getPixels = require("get-pixels");
-const gifEncoder = require("gif-encoder");
-const toGreyscale = require("./lib/grayscale");
-
-// The party palette. Party on, Sirocco!
-const colours = [
-    [255, 141, 139],
-    [254, 214, 137],
-    [136, 255, 137],
-    [135, 255, 255],
-    [139, 181, 254],
-    [215, 140, 255],
-    [255, 140, 255],
-    [255, 104, 247],
-    [254, 108, 183],
-    [255, 105, 104]
-];
+const createGreyscaleColorMapping = require("./lib/grayscale");
+const orbitTransform = require("./lib/transforms/orbit");
+const outputGif = require("./lib/gif");
+const colours = require("./lib/party-palette");
 
 /**
  * Writes a party version of the given input image to the specified output stream.
@@ -24,77 +12,64 @@ const colours = [
  */
 function createPartyImage(inputFilename, outputStream, partyRadius) {
     //TODO(somewhatabstract): Add other variations to radius, like tilt (for bobbling side to side)
-    const partyOffset = [];
-    colours.forEach((c, colourIndex) => {
-        const x =
-            partyRadius * Math.sin(2 * Math.PI * (-colourIndex / colours.length));
-        const y =
-            partyRadius * Math.cos(2 * Math.PI * (-colourIndex / colours.length));
-        partyOffset.push([Math.round(x), Math.round(y)]);
-    });
+    const partyOffset = orbitTransform(colours.length, partyRadius);
 
     function processImage(err, pixels) {
         if (err) {
-            console.log("Invalid image path..");
-            console.log(err);
+            console.error(`Invalid image path: ${err}`);
             return;
         }
 
         const { shape } = pixels;
-        const greyscale = toGreyscale(pixels);
+        const [width, height] = shape;
+        const getPixelValue = createGreyscaleColorMapping(pixels);
 
-        const gif = new gifEncoder(shape[0], shape[1]);
-        gif.pipe(outputStream);
+        //TODO(jeff): Allow colours array to be passed in so that we can have
+        // things like a single colour of white to create a greyscale image.
 
-        gif.setDelay(50);
-        gif.setRepeat(0);
-        gif.setTransparent("0x00FF00");
-        gif.writeHeader();
-        gif.on("readable", function() {
-            gif.read();
-        });
+        //TODO(jeff): Separate frame count from color count and then use some
+        // mod arithmetic to map colour to frame. This will allow us to have
+        // animation without necessarily lots of colour changes.
+        outputGif(width, height, outputStream, addFrame => {
+            //TODO(jeff): Move the process of colorizing to its own JS file.
+            // All that refactoring should then make it easier to add tests.
+            colours.forEach(function(c, colourIndex) {
+                const offset = partyOffset[colourIndex];
+                const p = [];
 
-        function getPixelValue(arr, shape, x, y) {
-            if (x < 0 || x >= shape[0] || y < 0 || y >= shape[1]) {
-                return -1;
-            }
-            return arr[x + y * shape[0]];
-        }
+                // Map over each pixel in the image and determine what color that
+                // pixel should be. We do that by transforming the pixel we're
+                // writing according to our transforms, which maps it back to a
+                // source pixel, which we can then look up in our coloring and
+                // apply accordingly.
+                for (let y = 0; y < height; y++) {
+                    for (let x = 0; x < width; x++) {
+                        const pixelValue = getPixelValue(
+                            x + offset[0],
+                            y + offset[1]
+                        );
 
-        colours.forEach(function(c, colourIndex) {
-            const offset = partyOffset[colourIndex];
-            const p = [];
-
-            for (let y = 0; y < shape[1]; y += 1) {
-                for (let x = 0; x < shape[0]; x += 1) {
-                    let g = getPixelValue(
-                        greyscale,
-                        shape,
-                        x + offset[0],
-                        y + offset[1]
-                    );
-
-                    if (g === -1) {
-                        p.push(0);
-                        p.push(255);
-                        p.push(0);
-                        p.push(0);
-                    } else {
-                        g = g < 32 ? 32 : g;
-
-                        p.push(g * c[0] / 255);
-                        p.push(g * c[1] / 255);
-                        p.push(g * c[2] / 255);
-                        p.push(255);
+                        // If we don't want something here, then add a transparent
+                        // pixel.
+                        if (pixelValue) {
+                            // Let's map to our current color.
+                            p.push(pixelValue * c[0] / 255);
+                            p.push(pixelValue * c[1] / 255);
+                            p.push(pixelValue * c[2] / 255);
+                            p.push(255);
+                        } else {
+                            // Assume a transparent pixel.
+                            p.push(0);
+                            p.push(255);
+                            p.push(0);
+                            p.push(0);
+                        }
                     }
                 }
-            }
 
-            gif.addFrame(p);
-            gif.flushData();
+                addFrame(p);
+            });
         });
-
-        gif.finish();
     }
 
     getPixels(inputFilename, processImage);
