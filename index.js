@@ -2,7 +2,20 @@ const getPixels = require("get-pixels");
 const createGreyscaleColorMapping = require("./lib/grayscale");
 const orbitTransform = require("./lib/transforms/orbit");
 const outputGif = require("./lib/gif");
-const colours = require("./lib/party-palette");
+const PARTY_PALATalette = require("./lib/party-palette");
+
+const colours = PARTY_PALETTE;
+
+// INPROGRESS(somewhatabstract): Make this generic and allow colouring rules and such.
+function createImage(inputFilename, outputStream, palette, transforms, frameCount, options) {
+    const offset = transforms
+        .map(t => t(frameCount, options))
+        .reduce((prev, current) => {});
+
+
+    // TODO: Calculate each frame offsets for each transform and combine them
+    //TODO: apply transforms, map colors, produce image.
+}
 
 /**
  * Writes a party version of the given input image to the specified output stream.
@@ -11,8 +24,14 @@ const colours = require("./lib/party-palette");
  * @param {number} partyRadius The radius used to animate movement in the output image
  */
 function createPartyImage(inputFilename, outputStream, partyRadius) {
+    // createImage(
+    //     inputFilename,
+    //      outputStream, PARTY_PALETTE, [orbitTransform], {
+    //     partyRadius: partyRadius,
+    // });
+
     //TODO(somewhatabstract): Add other variations to radius, like tilt (for bobbling side to side)
-    const partyOffset = orbitTransform(colours.length, partyRadius);
+    const partyOffset = orbitTransform(PARTY_PALETTE.length, partyRadius);
 
     function processImage(err, pixels) {
         if (err) {
@@ -24,14 +43,14 @@ function createPartyImage(inputFilename, outputStream, partyRadius) {
         const [width, height] = shape;
         const getPixelValue = createGreyscaleColorMapping(pixels);
 
-        //TODO(jeff): Allow colours array to be passed in so that we can have
+        //TODO(somewhatabstract): Allow colours array to be passed in so that we can have
         // things like a single colour of white to create a greyscale image.
 
-        //TODO(jeff): Separate frame count from color count and then use some
+        //TODO(somewhatabstract): Separate frame count from color count and then use some
         // mod arithmetic to map colour to frame. This will allow us to have
-        // animation without necessarily lots of colour changes.
+        // animated movement without necessarily lots of colour changes.
         outputGif(width, height, outputStream, addFrame => {
-            //TODO(jeff): Move the process of colorizing to its own JS file.
+            //TODO(somewhatabstract): Move the process of colorizing to its own JS file.
             // All that refactoring should then make it easier to add tests.
             colours.forEach(function(c, colourIndex) {
                 const offset = partyOffset[colourIndex];
